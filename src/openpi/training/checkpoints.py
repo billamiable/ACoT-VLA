@@ -114,13 +114,29 @@ def restore_state(
 
 
 def load_norm_stats(assets_dir: epath.Path | str, asset_id: str) -> dict[str, _normalize.NormStats] | None:
-    if "/" in asset_id or isinstance(asset_id, list):
-        norm_stats_dir = epath.Path(assets_dir)
+    """Load norm_stats.json from checkpoint assets.
+
+    Training/checkpoint export may use either:
+    - ``assets/<asset_id>/norm_stats.json``, or
+    - a flat ``assets/norm_stats.json`` (some export pipelines).
+    Try the nested path first when asset_id is a plain name, then fall back to assets_dir.
+    """
+    assets_dir = epath.Path(assets_dir)
+    if isinstance(asset_id, list) or (isinstance(asset_id, str) and "/" in asset_id):
+        candidates = [assets_dir]
     else:
-        norm_stats_dir = epath.Path(assets_dir) / asset_id
-    norm_stats = _normalize.load(norm_stats_dir)
-    logging.info(f"Loaded norm stats from {norm_stats_dir}")
-    return norm_stats
+        candidates = [assets_dir / asset_id, assets_dir]
+
+    last_err: FileNotFoundError | None = None
+    for norm_stats_dir in candidates:
+        try:
+            norm_stats = _normalize.load(norm_stats_dir)
+            logging.info("Loaded norm stats from %s", norm_stats_dir)
+            return norm_stats
+        except FileNotFoundError as e:
+            last_err = e
+    assert last_err is not None
+    raise last_err
 
 
 class Callback(Protocol):
